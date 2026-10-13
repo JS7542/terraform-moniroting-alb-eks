@@ -1,0 +1,11 @@
+variable "name" { type = string }
+variable "vpc_id" { type = string }
+variable "public_subnet_ids" { type = list(string) }
+variable "node_security_group_id" { type = string }
+variable "node_asg_name" { type = string }
+variable "cluster_name" { type = string }
+variable "cluster_endpoint" { type = string }
+variable "cluster_ca" { type = string }
+variable "nginx_image" { type = string }
+variable "http_allowed_cidrs" { type = set(string) }
+variable "python_command" { type = string }
