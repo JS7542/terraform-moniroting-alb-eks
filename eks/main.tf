@@ -1,8 +1,3 @@
-module "network" {
-  source   = "../modules/network"
-  vpc_id   = var.vpc_id
-  vpc_cidr = var.vpc_cidr
-}
 resource "aws_iam_role" "cluster" {
   name = "${var.name}-cluster"
   assume_role_policy = jsonencode({
@@ -14,27 +9,21 @@ resource "aws_iam_role_policy_attachment" "cluster" {
   role       = aws_iam_role.cluster.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
-resource "aws_cloudwatch_log_group" "cluster" {
-  name              = "/aws/eks/${var.name}/cluster"
-  retention_in_days = 7
-}
 resource "aws_eks_cluster" "this" {
   name                          = var.name
   version                       = var.kubernetes_version
   role_arn                      = aws_iam_role.cluster.arn
   bootstrap_self_managed_addons = true
-  enabled_cluster_log_types     = ["api", "audit", "authenticator"]
   vpc_config {
-    subnet_ids              = module.network.cluster_subnet_ids
+    subnet_ids              = var.cluster_subnet_ids
     endpoint_private_access = true
     endpoint_public_access  = true
-    public_access_cidrs     = var.api_allowed_cidrs
   }
   access_config {
     authentication_mode                         = "API"
     bootstrap_cluster_creator_admin_permissions = true
   }
-  depends_on = [aws_iam_role_policy_attachment.cluster, aws_cloudwatch_log_group.cluster]
+  depends_on = [aws_iam_role_policy_attachment.cluster]
 }
 resource "aws_iam_role" "node" {
   name = "${var.name}-node"
@@ -83,7 +72,7 @@ resource "aws_eks_node_group" "this" {
   cluster_name    = aws_eks_cluster.this.name
   node_group_name = "${var.name}-nodes"
   node_role_arn   = aws_iam_role.node.arn
-  subnet_ids      = module.network.cluster_subnet_ids
+  subnet_ids      = var.cluster_subnet_ids
   version         = var.kubernetes_version
   ami_type        = "AL2023_x86_64_STANDARD"
   instance_types  = [var.node_instance_type]
@@ -91,7 +80,7 @@ resource "aws_eks_node_group" "this" {
   scaling_config {
     min_size     = 2
     desired_size = 2
-    max_size     = 3
+    max_size     = 2
   }
   update_config { max_unavailable = 1 }
   launch_template {

@@ -7,14 +7,10 @@ variable "name" {
   }
 }
 variable "vpc_id" {
-  description = "Existing VPC ID; null discovers it by CIDR."
-  type        = string
-  default     = null
+  type = string
 }
-variable "vpc_cidr" {
-  type    = string
-  default = "10.20.0.0/16"
-}
+variable "public_subnet_ids" { type = list(string) }
+variable "private_subnet_ids" { type = list(string) }
 variable "nginx_image" {
   type    = string
   default = "nginx:1.28-alpine"

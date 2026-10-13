@@ -1,44 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-exec > >(tee -a /var/log/nginx-bootstrap.log) 2>&1
 
-retry() {
-  local attempt
-  for attempt in $(seq 1 12); do
-    if "$@"; then return 0; fi
-    sleep 10
-  done
-  return 1
-}
-
-retry dnf install -y docker
+dnf install -y docker
 systemctl enable --now docker
-
-# A quoted heredoc prevents image names from being interpreted as shell code.
-cat > /etc/nginx-container.env <<'IMAGE'
-NGINX_IMAGE=${nginx_image}
-IMAGE
-cat > /etc/systemd/system/nginx-container.service <<'UNIT'
-[Unit]
-Description=nginx Docker container
-Requires=docker.service
-After=docker.service network-online.target
-Wants=network-online.target
-StartLimitIntervalSec=0
-
-[Service]
-EnvironmentFile=/etc/nginx-container.env
-ExecStartPre=-/usr/bin/docker rm -f nginx
-ExecStart=/usr/bin/docker run --name nginx --pull=missing --publish 80:80 $NGINX_IMAGE
-ExecStop=/usr/bin/docker stop -t 10 nginx
-Restart=always
-RestartSec=10
-TimeoutStartSec=0
-TimeoutStopSec=30
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-
-systemctl daemon-reload
-systemctl enable --now nginx-container.service
+docker run -d --name nginx --restart unless-stopped -p 80:80 '${nginx_image}'

@@ -1,7 +1,5 @@
 output "name" { value = var.name }
 output "region" { value = "eu-north-1" }
-output "vpc_id" { value = module.network.vpc_id }
-output "public_subnet_ids" { value = module.network.public_subnet_ids }
 output "cluster_name" { value = aws_eks_cluster.this.name }
 output "cluster_endpoint" { value = aws_eks_cluster.this.endpoint }
 output "cluster_ca" { value = aws_eks_cluster.this.certificate_authority[0].data }

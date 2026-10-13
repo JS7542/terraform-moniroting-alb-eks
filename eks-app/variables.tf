@@ -8,4 +8,4 @@ variable "cluster_endpoint" { type = string }
 variable "cluster_ca" { type = string }
 variable "nginx_image" { type = string }
 variable "http_allowed_cidrs" { type = set(string) }
-variable "python_command" { type = string }
+variable "deployment_shell" { type = string }

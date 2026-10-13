@@ -3,59 +3,75 @@ locals {
     apiVersion = "v1", kind = "Namespace", metadata = { name = "nginx" }
   })
   manifest = templatefile("${path.module}/nginx.yaml.tftpl", { nginx_image = var.nginx_image })
-  connection = {
-    region   = "eu-north-1"
-    name     = var.cluster_name
-    endpoint = var.cluster_endpoint
-    ca       = var.cluster_ca
-  }
+  kubeconfig = jsonencode({
+    apiVersion = "v1"
+    kind       = "Config"
+    clusters = [{ name = "eks", cluster = {
+      server                       = var.cluster_endpoint
+      "certificate-authority-data" = var.cluster_ca
+    } }]
+    users = [{ name = "aws", user = { exec = {
+      apiVersion      = "client.authentication.k8s.io/v1beta1"
+      command         = "aws"
+      args            = ["eks", "get-token", "--region", "eu-north-1", "--cluster-name", var.cluster_name]
+      interactiveMode = "Never"
+    } } }]
+    contexts        = [{ name = "eks", context = { cluster = "eks", user = "aws" } }]
+    current-context = "eks"
+  })
+  shell = var.deployment_shell == "auto" ? (
+    can(regex("^[A-Za-z]:", abspath(path.root))) ? "powershell" : "bash"
+  ) : var.deployment_shell
+  interpreter = local.shell == "powershell" ? [
+    "PowerShell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", abspath("${path.module}/deploy.ps1")
+    ] : [
+    "bash", abspath("${path.module}/deploy.sh")
+  ]
 }
 
 # Run CLI operations only after EKS and its managed node group are ready.
 # No Kubernetes provider connects to a nonexistent cluster during planning.
 resource "terraform_data" "namespace" {
   input = {
-    connection     = jsonencode(local.connection)
-    manifest       = local.namespace
-    python_command = var.python_command
-    script_path    = abspath("${path.module}/deploy.py")
+    kubeconfig  = local.kubeconfig
+    manifest    = local.namespace
+    interpreter = local.interpreter
   }
   triggers_replace = [var.cluster_endpoint, var.cluster_name]
   provisioner "local-exec" {
-    interpreter = [self.input.python_command, self.input.script_path]
+    interpreter = self.input.interpreter
     command     = "namespace"
     environment = {
-      EKS_CONNECTION = self.input.connection
-      NGINX_MANIFEST = self.input.manifest
+      KUBECONFIG_JSON = self.input.kubeconfig
+      NGINX_MANIFEST  = self.input.manifest
     }
   }
   provisioner "local-exec" {
     when        = destroy
-    interpreter = [self.input.python_command, self.input.script_path]
+    interpreter = self.input.interpreter
     command     = "delete"
     environment = {
-      EKS_CONNECTION = self.input.connection
-      NGINX_MANIFEST = self.input.manifest
+      KUBECONFIG_JSON = self.input.kubeconfig
+      NGINX_MANIFEST  = self.input.manifest
     }
   }
 }
 resource "terraform_data" "nginx" {
   input = {
-    connection     = jsonencode(local.connection)
-    manifest       = local.manifest
-    python_command = var.python_command
-    script_path    = abspath("${path.module}/deploy.py")
+    kubeconfig  = local.kubeconfig
+    manifest    = local.manifest
+    interpreter = local.interpreter
   }
   triggers_replace = [
-    sha256(local.manifest), filesha256("${path.module}/deploy.py"),
-    var.cluster_endpoint, var.python_command
+    sha256(local.manifest), filesha256("${path.module}/deploy.sh"), filesha256("${path.module}/deploy.ps1"),
+    var.cluster_endpoint, local.shell
   ]
   provisioner "local-exec" {
-    interpreter = [self.input.python_command, self.input.script_path]
+    interpreter = self.input.interpreter
     command     = "apply"
     environment = {
-      EKS_CONNECTION = self.input.connection
-      NGINX_MANIFEST = self.input.manifest
+      KUBECONFIG_JSON = self.input.kubeconfig
+      NGINX_MANIFEST  = self.input.manifest
     }
   }
   depends_on = [terraform_data.namespace]
