@@ -15,7 +15,7 @@ variable "internal_ssh_security_group_id" { type = string }
 
 variable "nginx_image" {
   type    = string
-  default = "csjin21c/nginx:1.31.3-v1"
+  default = "nginx:1.31.3-cd"
 }
 
 variable "http_allowed_cidrs" {
