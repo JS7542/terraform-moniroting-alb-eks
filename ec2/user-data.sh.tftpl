@@ -1,6 +1,85 @@
 #!/bin/bash
 set -euo pipefail
+# Amazon Linux 2023
 
-dnf install -y docker
+# 1. 패키지 업데이트 및 설치
+dnf update -y
+dnf install -y docker unzip amazon-cloudwatch-agent stress-ng httpd-tools
+
+# 2. Docker Compose 설치
+DOCKER_PLUGIN_DIR="/usr/libexec/docker/cli-plugins"
+mkdir -p "$DOCKER_PLUGIN_DIR"
+curl -fSL \
+  https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+  -o "$DOCKER_PLUGIN_DIR/docker-compose"
+chmod +x "$DOCKER_PLUGIN_DIR/docker-compose"
+
+# 3. Docker 및 nginx 실행
 systemctl enable --now docker
-docker run -d --name nginx --restart unless-stopped -p 80:80 '${nginx_image}'
+usermod -aG docker ec2-user
+docker run -d \
+  --name nginx-container \
+  --restart unless-stopped \
+  -p 80:80 \
+  '${nginx_image}'
+
+# 4. CloudWatch 에이전트 설정
+mkdir -p /opt/aws/amazon-cloudwatch-agent/bin
+cat << 'EOF' > /opt/aws/amazon-cloudwatch-agent/bin/config.json
+{
+  "agent": {
+    "metrics_collection_interval": 60,
+    "run_as_user": "cwagent"
+  },
+  "metrics": {
+    "namespace": "CWAgent",
+    "metrics_collected": {
+      "cpu": {
+        "measurement": [
+          "cpu_usage_idle",
+          "cpu_usage_iowait",
+          "cpu_usage_user",
+          "cpu_usage_system"
+        ],
+        "metrics_collection_interval": 60,
+        "totalcpu": false
+      },
+      "disk": {
+        "measurement": [
+          "used_percent"
+        ],
+        "metrics_collection_interval": 60,
+        "resources": [
+          "*"
+        ]
+      },
+      "mem": {
+        "measurement": [
+          "mem_used_percent"
+        ],
+        "metrics_collection_interval": 60
+      }
+    }
+  },
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/syslog",
+            "log_group_name": "std20-ex-system-syslog",
+            "log_stream_name": "{instance_id}"
+          }
+        ]
+      }
+    }
+  }
+}
+EOF
+
+# 5. CloudWatch 에이전트 시작
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config \
+  -m ec2 \
+  -c file:/opt/aws/amazon-cloudwatch-agent/bin/config.json \
+  -s

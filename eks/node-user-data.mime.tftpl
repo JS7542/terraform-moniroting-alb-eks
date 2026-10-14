@@ -1,0 +1,73 @@
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="NGINX_CLOUDWATCH_BOUNDARY"
+
+--NGINX_CLOUDWATCH_BOUNDARY
+Content-Type: text/x-shellscript; charset="utf-8"
+
+#!/bin/bash
+set -euo pipefail
+
+# EKS 노드에는 Docker/Compose/nginx를 설치하지 않습니다.
+# nginx는 기존 eks-app Deployment에서 실행합니다.
+dnf install -y amazon-cloudwatch-agent
+
+mkdir -p /opt/aws/amazon-cloudwatch-agent/bin
+cat << 'EOF' > /opt/aws/amazon-cloudwatch-agent/bin/config.json
+{
+  "agent": {
+    "metrics_collection_interval": 60,
+    "run_as_user": "cwagent"
+  },
+  "metrics": {
+    "namespace": "CWAgent",
+    "metrics_collected": {
+      "cpu": {
+        "measurement": [
+          "cpu_usage_idle",
+          "cpu_usage_iowait",
+          "cpu_usage_user",
+          "cpu_usage_system"
+        ],
+        "metrics_collection_interval": 60,
+        "totalcpu": false
+      },
+      "disk": {
+        "measurement": [
+          "used_percent"
+        ],
+        "metrics_collection_interval": 60,
+        "resources": [
+          "*"
+        ]
+      },
+      "mem": {
+        "measurement": [
+          "mem_used_percent"
+        ],
+        "metrics_collection_interval": 60
+      }
+    }
+  },
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/syslog",
+            "log_group_name": "std20-ex-system-syslog",
+            "log_stream_name": "{instance_id}"
+          }
+        ]
+      }
+    }
+  }
+}
+EOF
+
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config \
+  -m ec2 \
+  -c file:/opt/aws/amazon-cloudwatch-agent/bin/config.json \
+  -s
+
+--NGINX_CLOUDWATCH_BOUNDARY--
