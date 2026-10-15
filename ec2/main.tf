@@ -68,9 +68,7 @@ resource "aws_launch_template" "web" {
     name = aws_iam_instance_profile.web.name
   }
 
-  user_data = base64encode(templatefile("${path.module}/user-data.sh.tftpl", {
-    nginx_image = var.nginx_image
-  }))
+  user_data = base64encode(file("${path.module}/user-data.sh"))
 
   block_device_mappings {
     device_name = data.aws_ami.al2023.root_device_name
